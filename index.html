@@ -938,24 +938,42 @@ tr:hover td { background: var(--neutral); }
       </div>
     </div>
 
-    <div class="scanner-wrapper" id="scanner-box">
-      <video id="qr-video" autoplay playsinline muted></video>
-      <canvas id="qr-canvas" style="display:none;"></canvas>
-      <div class="scanner-overlay">
-        <div class="scanner-frame" id="scanner-frame">
-          <div class="corner tl"></div>
-          <div class="corner tr"></div>
-          <div class="corner bl"></div>
-          <div class="corner br"></div>
-          <div class="scan-line"></div>
-        </div>
-      </div>
-      <div class="scanner-toast" id="scanner-toast"></div>
+    <!-- Mode toggle -->
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <button id="btn-mode-manuel" class="btn btn-navy" style="flex:1;justify-content:center;" onclick="setMode('manuel')">
+        👆 Mode manuel
+      </button>
+      <button id="btn-mode-camera" class="btn btn-outline" style="flex:1;justify-content:center;" onclick="setMode('camera')">
+        📷 Scan caméra
+      </button>
     </div>
 
-    <div style="margin-top:12px;">
-      <div class="card-title" style="margin-bottom:8px;">Liste en temps réel</div>
+    <!-- MODE MANUEL -->
+    <div id="mode-manuel-box">
+      <div class="alert alert-info" style="margin-bottom:10px;">👆 Appuie sur un étudiant pour le marquer <b>présent</b>. Appuie à nouveau pour annuler.</div>
       <div id="scan-student-list"></div>
+    </div>
+
+    <!-- MODE CAMERA -->
+    <div id="mode-camera-box" style="display:none;">
+      <div class="scanner-wrapper" id="scanner-box">
+        <video id="qr-video" autoplay playsinline muted></video>
+        <canvas id="qr-canvas" style="display:none;"></canvas>
+        <div class="scanner-overlay">
+          <div class="scanner-frame" id="scanner-frame">
+            <div class="corner tl"></div>
+            <div class="corner tr"></div>
+            <div class="corner bl"></div>
+            <div class="corner br"></div>
+            <div class="scan-line"></div>
+          </div>
+        </div>
+        <div class="scanner-toast" id="scanner-toast"></div>
+      </div>
+      <div style="margin-top:12px;">
+        <div class="card-title" style="margin-bottom:8px;">Liste en temps réel</div>
+        <div id="scan-student-list-cam"></div>
+      </div>
     </div>
 
     <button class="btn btn-red btn-full btn-lg" style="margin-top:16px;" onclick="closeCall()">
@@ -1786,8 +1804,41 @@ function startScanForCourse(planId) {
   document.getElementById('chef-scanner').style.flexDirection='column';
 
   updateScanProgress();
-  renderScanStudentList();
-  startCamera();
+  // Démarrer en mode manuel par défaut
+  setMode('manuel');
+}
+
+function setMode(mode) {
+  const manuelBox = document.getElementById('mode-manuel-box');
+  const cameraBox = document.getElementById('mode-camera-box');
+  const btnManuel = document.getElementById('btn-mode-manuel');
+  const btnCamera = document.getElementById('btn-mode-camera');
+
+  if (mode === 'manuel') {
+    manuelBox.style.display = 'block';
+    cameraBox.style.display = 'none';
+    btnManuel.className = 'btn btn-navy';
+    btnManuel.style.flex = '1';
+    btnManuel.style.justifyContent = 'center';
+    btnCamera.className = 'btn btn-outline';
+    btnCamera.style.flex = '1';
+    btnCamera.style.justifyContent = 'center';
+    // Arrêter la caméra si elle tournait
+    if (scanStream) { scanStream.getTracks().forEach(t=>t.stop()); scanStream=null; }
+    if (scanInterval) { clearInterval(scanInterval); scanInterval=null; }
+    renderScanStudentList();
+  } else {
+    manuelBox.style.display = 'none';
+    cameraBox.style.display = 'block';
+    btnCamera.className = 'btn btn-navy';
+    btnCamera.style.flex = '1';
+    btnCamera.style.justifyContent = 'center';
+    btnManuel.className = 'btn btn-outline';
+    btnManuel.style.flex = '1';
+    btnManuel.style.justifyContent = 'center';
+    renderScanStudentListCam();
+    startCamera();
+  }
 }
 
 function updateScanProgress() {
@@ -1804,13 +1855,49 @@ function renderScanStudentList() {
   if (!currentCall) return;
   const html = appData.students.map(s=>{
     const isPresent = currentCall.presentIds.includes(s.id);
+    return `<div class="student-item" onclick="togglePresent('${s.id}')" style="cursor:pointer;transition:background 0.15s;border-radius:8px;" onmouseenter="this.style.background='var(--neutral)'" onmouseleave="this.style.background=''">
+      <div class="student-avatar" style="${isPresent?'background:var(--present-bg);color:var(--present);':'background:var(--dgc-blue-light);color:var(--dgc-navy);'}">${initials(s.name)}</div>
+      <div style="flex:1">
+        <div class="student-name">${s.name}</div>
+        <div class="student-mat">${s.mat}</div>
+      </div>
+      <span class="status-badge ${isPresent?'present':'pending'}" style="min-width:80px;text-align:center;">
+        ${isPresent?'✅ Présent':'Appuyer ›'}
+      </span>
+    </div>`;
+  }).join('');
+  document.getElementById('scan-student-list').innerHTML = html;
+}
+
+function renderScanStudentListCam() {
+  if (!currentCall) return;
+  const html = appData.students.map(s=>{
+    const isPresent = currentCall.presentIds.includes(s.id);
     return `<div class="student-item">
-      <div class="student-avatar" style="${isPresent?'background:var(--present-bg);color:var(--present)':''}">${initials(s.name)}</div>
+      <div class="student-avatar" style="${isPresent?'background:var(--present-bg);color:var(--present)':'background:var(--dgc-blue-light);color:var(--dgc-navy);'}">${initials(s.name)}</div>
       <div style="flex:1"><div class="student-name">${s.name}</div><div class="student-mat">${s.mat}</div></div>
       <span class="status-badge ${isPresent?'present':'pending'}">${isPresent?'✅':'—'}</span>
     </div>`;
   }).join('');
-  document.getElementById('scan-student-list').innerHTML = html;
+  const el = document.getElementById('scan-student-list-cam');
+  if (el) el.innerHTML = html;
+}
+
+function togglePresent(studentId) {
+  if (!currentCall) return;
+  const student = appData.students.find(s=>s.id===studentId);
+  if (!student) return;
+  const idx = currentCall.presentIds.indexOf(studentId);
+  if (idx === -1) {
+    currentCall.presentIds.push(studentId);
+    showToast(`✅ ${student.name.split(' ')[0]} — Présent`);
+  } else {
+    currentCall.presentIds.splice(idx, 1);
+    showToast(`↩️ ${student.name.split(' ')[0]} — Retiré`);
+  }
+  saveData();
+  updateScanProgress();
+  renderScanStudentList();
 }
 
 function startCamera() {
@@ -1858,7 +1945,7 @@ function processQRCode(data) {
   currentCall.presentIds.push(studentId);
   saveData();
   updateScanProgress();
-  renderScanStudentList();
+  renderScanStudentListCam();
 
   const frame = document.getElementById('scanner-frame');
   frame.classList.add('success');
@@ -1878,29 +1965,26 @@ function showScanToast(msg, isError=false) {
 function stopScan() {
   if (scanInterval) { clearInterval(scanInterval); scanInterval=null; }
   if (scanStream) { scanStream.getTracks().forEach(t=>t.stop()); scanStream=null; }
+  document.getElementById('chef-home').style.display='flex';
+  document.getElementById('chef-scanner').style.display='none';
+  currentCall = null;
 }
 
 function closeCall() {
   if (!currentCall) return;
   const absent = appData.students.length - currentCall.presentIds.length;
   if (!confirm(`Terminer l'appel ?\n✅ ${currentCall.presentIds.length} présents\n❌ ${absent} absents automatiquement.`)) return;
-  stopScan();
+  if (scanInterval) { clearInterval(scanInterval); scanInterval=null; }
+  if (scanStream) { scanStream.getTracks().forEach(t=>t.stop()); scanStream=null; }
   saveData();
   currentCall = null;
   document.getElementById('chef-home').style.display='flex';
   document.getElementById('chef-scanner').style.display='none';
   renderChefHome();
   showToast('✅ Appel clôturé — en attente de validation');
-  // Return to home nav
   document.querySelectorAll('.bottom-nav .nav-item').forEach((n,i)=>n.classList.toggle('active',i===0));
 }
 
-function stopScan() {
-  if (scanInterval) { clearInterval(scanInterval); scanInterval=null; }
-  if (scanStream) { scanStream.getTracks().forEach(t=>t.stop()); scanStream=null; }
-  document.getElementById('chef-home').style.display='flex';
-  document.getElementById('chef-scanner').style.display='none';
-}
 
 function showCallDetail(callId) {
   const c = appData.calls.find(c=>c.id===callId);
